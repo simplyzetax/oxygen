@@ -1,9 +1,9 @@
 import { Cache } from "drizzle-orm/cache/core";
 import { CacheConfig } from "drizzle-orm/cache/core/types";
-import { DrizzleCacheDurableObject } from "../durableobjects/DrizzleCacheDurableObject";
+import { DrizzleCacheDurableObject } from "../../dos/DrizzleCacheDurableObject";
+import { env } from "cloudflare:workers";
 
-const DEFAULT_TTL_SECONDS = 1000;
-const DEFAULT_CACHE_NAME = "drizzle-cache";
+const DEFAULT_TTL_SECONDS = 300;
 const DISABLE_CACHE = false;
 
 interface MutationParams {
@@ -12,21 +12,15 @@ interface MutationParams {
 }
 
 export class DurableDrizzleCache extends Cache {
-    private readonly globalTtl: number;
     private readonly durableObject: DurableObjectStub<DrizzleCacheDurableObject>;
-    private readonly cacheLocation: string;
 
     constructor(
-        env: CloudflareBindings,
-        cacheName: string = DEFAULT_CACHE_NAME,
-        cacheIdentifier: string,
-        globalTtl: number = DEFAULT_TTL_SECONDS
+        private readonly location: string,
+        private readonly globalTtl: number = DEFAULT_TTL_SECONDS
     ) {
         super();
-        this.globalTtl = globalTtl;
-        this.cacheLocation = cacheIdentifier;
 
-        const durableObjectId = env.DrizzleCacheDurableObject.idFromName(this.cacheLocation);
+        const durableObjectId = env.DrizzleCacheDurableObject.idFromName(location);
         this.durableObject = env.DrizzleCacheDurableObject.get(durableObjectId);
     }
 
@@ -152,11 +146,11 @@ export class DurableDrizzleCache extends Cache {
 
     /** Internal helper to prefix keys */
     private buildCacheKey(key: string): string {
-        return `${this.cacheLocation}-${key}`;
+        return `${this.location}-${key}`;
     }
 
     /** Build an index key for a table within this cache location */
     private buildIndexKey(table: string): string {
-        return `${this.cacheLocation}-index:${table}`;
+        return `${this.location}-index:${table}`;
     }
 }

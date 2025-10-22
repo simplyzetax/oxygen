@@ -1,6 +1,5 @@
 import { index, sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-
 export const HOTFIXES = sqliteTable(
     'hotfixes',
     {
