@@ -1,15 +1,20 @@
 {
-	"name": "backend",
-	"type": "module",
-	"scripts": {
-		"dev": "wrangler dev",
-		"deploy": "wrangler deploy --minify",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
-	},
-	"dependencies": {
-		"hono": "^4.10.2"
-	},
-	"devDependencies": {
-		"wrangler": "^4.44.0"
-	}
+    "name": "backend",
+    "type": "module",
+    "scripts": {
+        "dev": "vite dev",
+        "deploy": "vite build && wrangler deploy",
+        "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    },
+    "dependencies": {
+        "drizzle-kit": "^0.31.5",
+        "drizzle-orm": "^0.44.6",
+        "hono": "^4.10.2",
+        "zod": "^4.1.12"
+    },
+    "devDependencies": {
+        "@cloudflare/vite-plugin": "^1.13.14",
+        "vite": "^7.1.11",
+        "wrangler": "^4.44.0"
+    }
 }
