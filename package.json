@@ -1,0 +1,17 @@
+{
+    "private": true,
+    "name": "oxygen",
+    "packageManager": "pnpm@9.12.2",
+    "scripts": {
+        "dev": "turbo run dev --parallel --no-cache --ui tui",
+        "dev:worker": "turbo run dev --filter=worker-api --no-cache",
+        "dev:go": "turbo run dev --filter=go-service --no-cache",
+        "build": "turbo run build",
+        "test": "turbo run test"
+    },
+    "devDependencies": {
+        "cross-env": "^10.1.0",
+        "turbo": "^2.5.8",
+        "wrangler": "^3.114.15"
+    }
+}
