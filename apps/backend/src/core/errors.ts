@@ -1,35 +1,46 @@
-class OxygenError extends Error {
-    code: number;
-    name: string;
+export class OxygenError extends Error {
+    public readonly code: number;
+    public readonly name: string;
 
-    constructor(message: string) {
+    constructor(name: string, message: string, code = 500) {
         super(message);
-        this.name = "ProxyError";
-        this.code = 500;
+        this.name = name;
+        this.code = code;
     }
 
-    async toResponse() {
-        return new Response(JSON.stringify({
-            error: this.message,
-            code: this.code,
-            name: this.name,
-        }), { status: this.code });
+    toJSON() {
+        return { error: this.message, code: this.code, name: this.name };
     }
 
-    throw() {
+    toResponse(): Response {
+        return new Response(JSON.stringify(this.toJSON()), {
+            status: this.code,
+            headers: { "Content-Type": "application/json" },
+        });
+    }
+
+    throw(): never {
         throw this;
     }
 }
 
 export const Errors = {
-    ProxyError: new OxygenError("Proxy error"),
-    RecursionError: new OxygenError("Recursion detected"),
-    NoTargetError: new OxygenError("No target host provided"),
-    UnauthorizedError: new OxygenError("Unauthorized"),
-    NotFoundError: new OxygenError("Not Found"),
-    BadRequestError: new OxygenError("Bad Request"),
-    InternalServerError: new OxygenError("Internal Server Error"),
-    ServiceUnavailableError: new OxygenError("Service Unavailable"),
-    GatewayTimeoutError: new OxygenError("Gateway Timeout"),
-}
-
+    ProxyError: (msg = "Proxy error") =>
+        new OxygenError("ProxyError", msg, 502),
+    RecursionError: (msg = "Recursion detected") =>
+        new OxygenError("RecursionError", msg, 508),
+    NoTargetError: (msg = "No target host provided") =>
+        new OxygenError("NoTargetError", msg, 400),
+    UnauthorizedError: (msg = "Unauthorized") =>
+        new OxygenError("UnauthorizedError", msg, 401),
+    NotFoundError: (msg = "Not Found") =>
+        new OxygenError("NotFoundError", msg, 404),
+    BadRequestError: (msg = "Bad Request") =>
+        new OxygenError("BadRequestError", msg, 400),
+    InternalServerError: (msg = "Internal Server Error") =>
+        new OxygenError("InternalServerError", msg, 500),
+    ServiceUnavailableError: (msg = "Service Unavailable") =>
+        new OxygenError("ServiceUnavailableError", msg, 503),
+    GatewayTimeoutError: (msg = "Gateway Timeout") =>
+        new OxygenError("GatewayTimeoutError", msg, 504),
+};

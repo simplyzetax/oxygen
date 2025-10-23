@@ -10,6 +10,7 @@
         "drizzle-kit": "^0.31.5",
         "drizzle-orm": "^0.44.6",
         "hono": "^4.10.2",
+        "neverthrow": "^8.2.0",
         "zod": "^4.1.12"
     },
     "devDependencies": {

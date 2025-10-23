@@ -30,7 +30,11 @@ app.use('*', async (c, next) => {
 
 app.use('*', async (c, next) => {
     const proxy = new Proxy(c);
-    return await proxy.forward();
+    const result = await proxy.forward();
+    if (result.isErr()) {
+        return result.error.toResponse();
+    }
+    return result.value;
 });
 
 export { app };
