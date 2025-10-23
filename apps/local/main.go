@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -19,6 +21,12 @@ const (
 )
 
 func main() {
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
 	target, err := url.Parse(upstream)
 	if err != nil {
 		log.Fatalf("invalid upstream url: %v", err)
@@ -31,6 +39,7 @@ func main() {
 		if req.Header.Get("X-Forwarded-Host") == "" {
 			req.Header.Set("X-Forwarded-Host", req.Host)
 		}
+		req.Header.Set("X-Backend-Key", os.Getenv("BACKEND_SECRET"))
 		if clientIP := req.RemoteAddr; clientIP != "" {
 			if prior := req.Header.Get("X-Forwarded-For"); prior == "" {
 				req.Header.Set("X-Forwarded-For", clientIP)
