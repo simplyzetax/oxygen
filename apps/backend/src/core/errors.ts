@@ -1,15 +1,17 @@
 export class OxygenError extends Error {
     public readonly code: number;
     public readonly name: string;
+    public readonly body: Record<string, any>;
 
-    constructor(name: string, message: string, code = 500) {
+    constructor(name: string, message: string, code = 500, body: Record<string, any> = {}) {
         super(message);
         this.name = name;
         this.code = code;
+        this.body = body;
     }
 
     toJSON() {
-        return { error: this.message, code: this.code, name: this.name };
+        return { error: this.message, code: this.code, name: this.name, ...this.body };
     }
 
     toResponse(): Response {
@@ -45,4 +47,6 @@ export const Errors = {
         new OxygenError("ServiceUnavailableError", msg, 503),
     GatewayTimeoutError: (msg = "Gateway Timeout") =>
         new OxygenError("GatewayTimeoutError", msg, 504),
+    UpstreamError: (msg = "Upstream error", body: Record<string, any> = {}) =>
+        new OxygenError("UpstreamError", msg, 502, body),
 };

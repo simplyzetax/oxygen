@@ -131,6 +131,18 @@ export default class Proxy {
                 });
 
                 const response = await fetch(proxyRequest);
+                if (!response.ok) {
+                    throw Errors.UpstreamError(
+                        `Upstream responded with ${response.status}`,
+                        {
+                            upstreamResponse: {
+                                status: response.status,
+                                statusText: response.statusText,
+                                headers: Object.fromEntries(response.headers.entries()),
+                            },
+                        }
+                    );
+                }
                 return response;
             })(),
             (e) =>
