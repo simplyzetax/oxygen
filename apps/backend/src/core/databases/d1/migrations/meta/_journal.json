@@ -15,6 +15,13 @@
       "when": 1761163620747,
       "tag": "0001_closed_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1761228232025,
+      "tag": "0002_yielding_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

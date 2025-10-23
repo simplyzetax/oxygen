@@ -17,14 +17,16 @@ const (
 	suffix   = "ol.epicgames.com"
 	certPath = "./certs/_wildcard.ol.epicgames.com.pem"
 	keyPath  = "./certs/_wildcard.ol.epicgames.com-key.pem"
-	upstream = "http://127.0.0.1:8787"
 )
 
 func main() {
-
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
+	}
+
+	upstream := os.Getenv("BACKEND_URL")
+	if upstream == "" {
+		upstream = "https://backend.zetax.workers.dev"
 	}
 
 	target, err := url.Parse(upstream)
@@ -36,17 +38,19 @@ func main() {
 	oldDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		oldDirector(req)
-		if req.Header.Get("X-Forwarded-Host") == "" {
-			req.Header.Set("X-Forwarded-Host", req.Host)
-		}
+
+		// Always set the backend secret for authentication
 		req.Header.Set("X-Backend-Key", os.Getenv("BACKEND_SECRET"))
-		if clientIP := req.RemoteAddr; clientIP != "" {
-			if prior := req.Header.Get("X-Forwarded-For"); prior == "" {
-				req.Header.Set("X-Forwarded-For", clientIP)
-			} else {
-				req.Header.Set("X-Forwarded-For", prior+", "+clientIP)
-			}
+
+		// Preserve original requested host for your Worker
+		originalHost := req.Host
+		if req.Header.Get("X-Epic-URL") == "" {
+			req.Header.Set("X-Epic-URL", originalHost)
 		}
+
+		// Important: ensure Host header matches the upstream zone to prevent 403s
+		req.Host = target.Host
+		req.Header.Set("Host", target.Host)
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -58,8 +62,9 @@ func main() {
 	router.Use(gin.Recovery(), gin.Logger())
 
 	router.Any("*path", func(c *gin.Context) {
+		// Reject requests that don’t end with your wildcard domain
 		if !strings.HasSuffix(c.Request.Host, suffix) {
-			c.AbortWithStatus(403)
+			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
 		proxy.ServeHTTP(c.Writer, c.Request)

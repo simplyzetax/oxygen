@@ -1,32 +1,28 @@
 import { Context } from "hono";
 import { Result, ResultAsync, ok, err } from "neverthrow";
 import { Errors, OxygenError } from "../core/errors";
+import { isProduction } from "./env";
 
 type ForwardOptions = {
-    target?: string;
     rewritePath?: (path: string) => string;
     addHeaders?: Record<string, string>;
 };
 
-type ForwardSuccess = Response;
-type ForwardError = OxygenError;
-
 const URL_WHITELIST = [
     /^https?:\/\/([a-zA-Z0-9-]+\.)*ol\.epicgames\.com(\/.*)?$/,
-];
+    /^https?:\/\/relay\.zetax\.workers\.dev(\/.*)?$/,
+    /^https?:\/\/relay\.duck\.codes(\/.*)?$/,
+] as const;
+
+const REDIRECT_CODES: ReadonlyArray<number> = [301, 302, 303, 307, 308, 304];
 
 export default class Proxy {
     private request: Request;
 
-    constructor(
-        private readonly ctx: Context<{ Bindings: CloudflareBindings }>
-    ) {
+    constructor(private readonly ctx: Context<{ Bindings: CloudflareBindings }>) {
         this.request = ctx.req.raw;
     }
 
-    /**
-     * Safely mutates the request body and content-type headers.
-     */
     setBody<T extends Record<string, any> | string | Blob>(
         type: "json" | "form" | "text" | "raw" = "json",
         body: T
@@ -36,35 +32,27 @@ export default class Proxy {
             let payload: BodyInit | null = null;
 
             switch (type) {
-                case "json": {
+                case "json":
                     headers.set("Content-Type", "application/json");
                     payload = JSON.stringify(body);
                     break;
-                }
-                case "form": {
+                case "form":
                     headers.set("Content-Type", "application/x-www-form-urlencoded");
                     const params = new URLSearchParams();
-                    for (const [key, value] of Object.entries(
-                        body as Record<string, unknown>
-                    )) {
+                    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
                         params.set(key, String(value));
                     }
                     payload = params;
                     break;
-                }
-                case "text": {
+                case "text":
                     headers.set("Content-Type", "text/plain");
                     payload = body as string;
                     break;
-                }
-                case "raw": {
+                case "raw":
                     payload = body as BodyInit;
                     break;
-                }
                 default:
-                    return err(
-                        Errors.BadRequestError(`Unsupported body type: ${type}`)
-                    );
+                    return err(Errors.BadRequestError(`Unsupported body type: ${type}`));
             }
 
             this.request = new Request(this.request.url, {
@@ -75,48 +63,47 @@ export default class Proxy {
 
             return ok(undefined);
         } catch (e) {
-            const msg =
-                e instanceof Error ? e.message : "Unknown error in setBody";
+            const msg = e instanceof Error ? e.message : "Unknown error in setBody";
             return err(Errors.BadRequestError(`Failed to set body: ${msg}`));
         }
     }
 
-    /**
-     * Forwards the request to a remote target, preserving method/body/headers,
-     * with recursion prevention and optional path/header rewrites.
-     */
-    forward(
-        opts: ForwardOptions = {}
-    ): ResultAsync<ForwardSuccess, ForwardError> {
+    forward(opts: ForwardOptions = {}): ResultAsync<ProxyResponse, OxygenError> {
         return ResultAsync.fromPromise(
             (async () => {
-                const target =
-                    opts.target ?? this.ctx.req.header("X-Forwarded-Host");
+                const epicHost = this.ctx.req.header("X-Epic-URL"); // might be just a domain
+                const relayUrl = "https://relay.duck.codes";
 
-                if (!target) throw Errors.NoTargetError();
+                if (!epicHost) throw Errors.NoTargetError();
+
+                const originalUrl = new URL(this.ctx.req.url);
+                const path =
+                    opts.rewritePath?.(originalUrl.pathname + originalUrl.search) ??
+                    originalUrl.pathname + originalUrl.search;
+
+                // Build a complete, valid URL for the target
+                const epicTargetUrl = epicHost.startsWith("http")
+                    ? epicHost // full URL already
+                    : `https://${epicHost}${path.startsWith("/") ? path : `/${path}`}`;
+
+                // choose base target (relay in dev, direct in prod)
+                const baseTarget = isProduction ? epicTargetUrl : relayUrl;
 
                 if (this.ctx.req.header("X-Recursion-Test")) {
                     throw Errors.RecursionError();
                 }
 
-                const targetWithProtocol = target.startsWith("http")
-                    ? target
-                    : `https://${target}`;
-
-                if (!URL_WHITELIST.some(pattern => pattern.test(targetWithProtocol))) {
+                if (!URL_WHITELIST.some((pattern) => pattern.test(baseTarget))) {
                     throw Errors.NotAllowedError();
                 }
 
-                const originalUrl = new URL(this.ctx.req.url);
-                const path =
-                    opts.rewritePath?.(
-                        originalUrl.pathname + originalUrl.search
-                    ) ?? (originalUrl.pathname + originalUrl.search);
-
-                const targetUrl = new URL(path, targetWithProtocol);
-
                 const headers = new Headers(this.request.headers);
                 headers.set("X-Recursion-Test", "1");
+
+                if (!isProduction) {
+                    console.warn(`Forwarding to epic target: ${epicTargetUrl}`);
+                    headers.set("X-Epic-URL", epicTargetUrl);
+                }
 
                 if (opts.addHeaders) {
                     for (const [k, v] of Object.entries(opts.addHeaders)) {
@@ -124,14 +111,21 @@ export default class Proxy {
                     }
                 }
 
-                const proxyRequest = new Request(targetUrl, {
+                const proxyRequest = new Request(baseTarget, {
                     method: this.request.method,
                     headers,
-                    body: this.request.body,
+                    body:
+                        this.request.method !== "GET" && this.request.method !== "HEAD"
+                            ? this.request.body
+                            : undefined,
                 });
 
+                console.info(
+                    `[Proxy] ${isProduction ? "PROD" : "DEV"} → ${baseTarget}`
+                );
+
                 const response = await fetch(proxyRequest);
-                if (!response.ok) {
+                if (!response.ok && !REDIRECT_CODES.includes(response.status)) {
                     throw Errors.UpstreamError(
                         `Upstream responded with ${response.status}`,
                         {
@@ -139,11 +133,13 @@ export default class Proxy {
                                 status: response.status,
                                 statusText: response.statusText,
                                 headers: Object.fromEntries(response.headers.entries()),
+                                upstreamUrl: baseTarget,
                             },
                         }
                     );
                 }
-                return response;
+
+                return new ProxyResponse(response);
             })(),
             (e) =>
                 e instanceof OxygenError
@@ -153,5 +149,15 @@ export default class Proxy {
                         }`
                     )
         );
+    }
+}
+
+class ProxyResponse extends Response {
+    constructor(response: Response) {
+        super(response.body, response);
+    }
+
+    async isEpicError(): Promise<boolean> {
+        return this.headers.get("X-Epic-Error") !== null;
     }
 }
