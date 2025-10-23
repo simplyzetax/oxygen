@@ -1,0 +1,1 @@
+ALTER TABLE `hotfixes` ADD `dss_storage_id` text;

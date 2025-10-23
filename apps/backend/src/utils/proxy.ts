@@ -23,6 +23,11 @@ export default class Proxy {
         this.request = ctx.req.raw;
     }
 
+    static upstreamUrl(ctx: Context<{ Bindings: CloudflareBindings }>): string {
+        const epicHost = ctx.req.header("X-Epic-URL");
+        return epicHost ?? "https://relay.duck.codes";
+    }
+
     setBody<T extends Record<string, any> | string | Blob>(
         type: "json" | "form" | "text" | "raw" = "json",
         body: T
@@ -101,7 +106,6 @@ export default class Proxy {
                 headers.set("X-Recursion-Test", "1");
 
                 if (!isProduction) {
-                    console.warn(`Forwarding to epic target: ${epicTargetUrl}`);
                     headers.set("X-Epic-URL", epicTargetUrl);
                 }
 
@@ -120,10 +124,6 @@ export default class Proxy {
                             : undefined,
                 });
 
-                console.info(
-                    `[Proxy] ${isProduction ? "PROD" : "DEV"} → ${baseTarget}`
-                );
-
                 const response = await fetch(proxyRequest);
                 if (!response.ok && !REDIRECT_CODES.includes(response.status)) {
                     throw Errors.UpstreamError(
@@ -139,7 +139,7 @@ export default class Proxy {
                     );
                 }
 
-                return new ProxyResponse(response);
+                return new ProxyResponse(response.clone());
             })(),
             (e) =>
                 e instanceof OxygenError

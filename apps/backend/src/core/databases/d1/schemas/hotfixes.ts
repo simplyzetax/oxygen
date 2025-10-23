@@ -8,6 +8,7 @@ export const HOTFIXES = sqliteTable(
             .$defaultFn(() => crypto.randomUUID()),
         filename: text("file").notNull(),
         uniqueFilename: text("unique_filename"),
+        dssStorageId: text("dss_storage_id"),
         section: text("section").notNull(),
         key: text("key").notNull(),
         value: text("value").notNull(),

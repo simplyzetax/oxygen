@@ -1,7 +1,17 @@
 import { app } from "./core/app";
-export { DrizzleCacheDurableObject } from './core/dos/DrizzleCacheDurableObject';
+import Proxy from "./utils/proxy";
+export { DrizzleCacheDurableObject } from "./core/dos/DrizzleCacheDurableObject";
 
-import.meta.glob('./services/**/*.ts', { eager: true }) as Record<string, () => Promise<void>>;
+//import.meta.glob("./services/**/*.ts", { eager: true });
+import "./services/datastorage";
+import "./services/cloudstorage";
+import "./services/health";
+
+app.use("*", async (c) => {
+    const proxy = new Proxy(c);
+    const result = await proxy.forward();
+    return result.isErr() ? result.error.toResponse() : result.value;
+});
 
 export default {
     fetch: app.fetch,

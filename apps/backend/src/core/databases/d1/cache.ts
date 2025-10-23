@@ -4,7 +4,7 @@ import { DrizzleCacheDurableObject } from "../../dos/DrizzleCacheDurableObject";
 import { env } from "cloudflare:workers";
 
 const DEFAULT_TTL_SECONDS = 300;
-const DISABLE_CACHE = false;
+const DISABLE_CACHE = true;
 
 interface MutationParams {
     tables?: string[];
@@ -31,7 +31,6 @@ export class DurableDrizzleCache extends Cache {
     /** Get cache entry */
     override async get(key: string): Promise<any[] | undefined> {
         if (DISABLE_CACHE) {
-            console.log(`[CACHE] GET ${key} - CACHE DISABLED`);
             return undefined;
         }
         const prefixedKey = this.buildCacheKey(key);
@@ -60,7 +59,6 @@ export class DurableDrizzleCache extends Cache {
         config?: CacheConfig
     ): Promise<void> {
         if (DISABLE_CACHE) {
-            console.log(`[CACHE] PUT ${key} - CACHE DISABLED`);
             return;
         }
         const prefixedKey = this.buildCacheKey(key);
