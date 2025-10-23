@@ -25,6 +25,8 @@ export class OxygenError extends Error {
 }
 
 export const Errors = {
+    NotAllowedError: (msg = "Not allowed") =>
+        new OxygenError("NotAllowedError", msg, 403),
     ProxyError: (msg = "Proxy error") =>
         new OxygenError("ProxyError", msg, 502),
     RecursionError: (msg = "Recursion detected") =>

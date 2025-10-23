@@ -1,6 +1,5 @@
 import { Context } from "hono";
-import { ResultAsync, ok, err, Result } from "neverthrow";
-
+import { Result, ResultAsync, ok, err } from "neverthrow";
 import { Errors, OxygenError } from "../core/errors";
 
 type ForwardOptions = {
@@ -12,13 +11,22 @@ type ForwardOptions = {
 type ForwardSuccess = Response;
 type ForwardError = OxygenError;
 
+const URL_WHITELIST = [
+    /^https?:\/\/([a-zA-Z0-9-]+\.)*ol\.epicgames\.com(\/.*)?$/,
+];
+
 export default class Proxy {
     private request: Request;
 
-    constructor(private readonly ctx: Context<{ Bindings: CloudflareBindings }>) {
+    constructor(
+        private readonly ctx: Context<{ Bindings: CloudflareBindings }>
+    ) {
         this.request = ctx.req.raw;
     }
 
+    /**
+     * Safely mutates the request body and content-type headers.
+     */
     setBody<T extends Record<string, any> | string | Blob>(
         type: "json" | "form" | "text" | "raw" = "json",
         body: T
@@ -28,28 +36,35 @@ export default class Proxy {
             let payload: BodyInit | null = null;
 
             switch (type) {
-                case "json":
+                case "json": {
                     headers.set("Content-Type", "application/json");
                     payload = JSON.stringify(body);
                     break;
-                case "form":
+                }
+                case "form": {
                     headers.set("Content-Type", "application/x-www-form-urlencoded");
-                    payload = new URLSearchParams(
-                        Object.entries(body as Record<string, any>).map(([k, v]) => [
-                            k,
-                            String(v),
-                        ])
-                    );
+                    const params = new URLSearchParams();
+                    for (const [key, value] of Object.entries(
+                        body as Record<string, unknown>
+                    )) {
+                        params.set(key, String(value));
+                    }
+                    payload = params;
                     break;
-                case "text":
+                }
+                case "text": {
                     headers.set("Content-Type", "text/plain");
                     payload = body as string;
                     break;
-                case "raw":
+                }
+                case "raw": {
                     payload = body as BodyInit;
                     break;
+                }
                 default:
-                    return err(Errors.BadRequestError(`Unsupported body type: ${type}`));
+                    return err(
+                        Errors.BadRequestError(`Unsupported body type: ${type}`)
+                    );
             }
 
             this.request = new Request(this.request.url, {
@@ -59,34 +74,44 @@ export default class Proxy {
             });
 
             return ok(undefined);
-        } catch (error) {
-            return err(Errors.BadRequestError(`Failed to set body: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        } catch (e) {
+            const msg =
+                e instanceof Error ? e.message : "Unknown error in setBody";
+            return err(Errors.BadRequestError(`Failed to set body: ${msg}`));
         }
     }
 
-    forward(opts: ForwardOptions = {}): ResultAsync<ForwardSuccess, ForwardError> {
+    /**
+     * Forwards the request to a remote target, preserving method/body/headers,
+     * with recursion prevention and optional path/header rewrites.
+     */
+    forward(
+        opts: ForwardOptions = {}
+    ): ResultAsync<ForwardSuccess, ForwardError> {
         return ResultAsync.fromPromise(
             (async () => {
                 const target =
-                    opts.target ??
-                    this.ctx.req.header("X-Forwarded-Host");
-                if (!target) {
-                    throw Errors.NoTargetError();
-                }
+                    opts.target ?? this.ctx.req.header("X-Forwarded-Host");
 
-                const recursionTest = this.ctx.req.header("X-Recursion-Test");
-                if (recursionTest) {
+                if (!target) throw Errors.NoTargetError();
+
+                if (this.ctx.req.header("X-Recursion-Test")) {
                     throw Errors.RecursionError();
                 }
 
-                const targetWithProtocol = target.startsWith('http') ? target : `https://${target}`;
+                const targetWithProtocol = target.startsWith("http")
+                    ? target
+                    : `https://${target}`;
+
+                if (!URL_WHITELIST.some(pattern => pattern.test(targetWithProtocol))) {
+                    throw Errors.NotAllowedError();
+                }
 
                 const originalUrl = new URL(this.ctx.req.url);
-                const path = opts.rewritePath
-                    ? opts.rewritePath(originalUrl.pathname + originalUrl.search)
-                    : originalUrl.pathname + originalUrl.search;
-
-                console.log(path, targetWithProtocol);
+                const path =
+                    opts.rewritePath?.(
+                        originalUrl.pathname + originalUrl.search
+                    ) ?? (originalUrl.pathname + originalUrl.search);
 
                 const targetUrl = new URL(path, targetWithProtocol);
 
@@ -94,25 +119,27 @@ export default class Proxy {
                 headers.set("X-Recursion-Test", "1");
 
                 if (opts.addHeaders) {
-                    for (const [key, value] of Object.entries(opts.addHeaders)) {
-                        headers.set(key, value);
+                    for (const [k, v] of Object.entries(opts.addHeaders)) {
+                        headers.set(k, v);
                     }
                 }
 
-                const proxyRequest = new Request(targetUrl.toString(), {
+                const proxyRequest = new Request(targetUrl, {
                     method: this.request.method,
                     headers,
                     body: this.request.body,
                 });
 
-                return await fetch(proxyRequest);
+                const response = await fetch(proxyRequest);
+                return response;
             })(),
-            (error) => {
-                if (error instanceof OxygenError) {
-                    return error;
-                }
-                return Errors.ProxyError(`Failed to forward request: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
+            (e) =>
+                e instanceof OxygenError
+                    ? e
+                    : Errors.ProxyError(
+                        `Failed to forward request: ${e instanceof Error ? e.message : String(e)
+                        }`
+                    )
         );
     }
 }
