@@ -6,6 +6,7 @@ export { DrizzleCacheDurableObject } from "./core/dos/DrizzleCacheDurableObject"
 import "./services/datastorage";
 import "./services/cloudstorage";
 import "./services/health";
+import "./services/contentpages";
 
 app.use("*", async (c) => {
     const proxy = new Proxy(c);
