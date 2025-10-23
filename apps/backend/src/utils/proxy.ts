@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { Errors } from "../core/errors";
 
 type ForwardOptions = {
     target?: string;
@@ -52,22 +53,33 @@ export default class Proxy {
         });
     }
 
-    async forward(opts: ForwardOptions = {}): Promise<Response> {
+    async forward(opts: ForwardOptions = {}) {
         const target =
             opts.target ??
             this.ctx.req.header("X-Forwarded-Host");
         if (!target) {
-            return this.ctx.json({ error: "No target host provided" }, 400);
+            return Errors.NoTargetError.toResponse();
         }
+
+        const recursionTest = this.ctx.req.header("X-Recursion-Test");
+        if (recursionTest) {
+            return Errors.RecursionError.toResponse();
+        }
+
+        const targetWithProtocol = target.startsWith('http') ? target : `https://${target}`;
 
         const originalUrl = new URL(this.ctx.req.url);
         const path = opts.rewritePath
             ? opts.rewritePath(originalUrl.pathname + originalUrl.search)
             : originalUrl.pathname + originalUrl.search;
 
-        const targetUrl = new URL(path, target);
+        console.log(path, targetWithProtocol);
+
+        const targetUrl = new URL(path, targetWithProtocol);
 
         const headers = new Headers(this.request.headers);
+        headers.set("X-Recursion-Test", "1");
+
         if (opts.addHeaders) {
             for (const [key, value] of Object.entries(opts.addHeaders)) {
                 headers.set(key, value);
@@ -80,12 +92,6 @@ export default class Proxy {
             body: this.request.body,
         });
 
-        const resp = await fetch(proxyRequest);
-
-        return new Response(resp.body, {
-            status: resp.status,
-            statusText: resp.statusText,
-            headers: resp.headers,
-        });
+        return await fetch(proxyRequest);
     }
 }
