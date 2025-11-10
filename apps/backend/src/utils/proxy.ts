@@ -2,6 +2,7 @@ import { Context } from "hono";
 import { Result, ResultAsync, ok, err } from "neverthrow";
 import { Errors, OxygenError } from "../core/errors";
 import { isProduction } from "./env";
+import { Account } from "../core/databases/d1/schemas/accounts";
 
 type ForwardOptions = {
     rewritePath?: (path: string) => string;
@@ -19,11 +20,11 @@ const REDIRECT_CODES: ReadonlyArray<number> = [301, 302, 303, 307, 308, 304];
 export default class Proxy {
     private request: Request;
 
-    constructor(private readonly ctx: Context<{ Bindings: CloudflareBindings }>) {
+    constructor(private readonly ctx: Context<{ Bindings: CloudflareBindings, Variables: { account: Account } }>) {
         this.request = ctx.req.raw;
     }
 
-    static upstreamUrl(ctx: Context<{ Bindings: CloudflareBindings }>): string {
+    static upstreamUrl(ctx: Context<{ Bindings: CloudflareBindings, Variables: { account: Account } }>): string {
         const epicHost = ctx.req.header("X-Epic-URL");
         return epicHost ?? "https://relay.duck.codes";
     }
