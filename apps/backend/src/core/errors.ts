@@ -17,7 +17,7 @@ export class OxygenError extends Error {
     toResponse(): Response {
         return new Response(JSON.stringify(this.toJSON()), {
             status: this.code,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "Proxy": "Oxygen" },
         });
     }
 

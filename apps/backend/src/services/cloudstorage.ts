@@ -28,8 +28,6 @@ app.get("/fortnite/api/cloudstorage/system", async (c) => {
     const updatesDssStorageId: { filename: string; dssStorageId: string }[] = [];
     const updatesUniqueFilename: { filename: string; uniqueFilename: string }[] = [];
 
-    console.warn("Requested system files", epicFiles.length);
-
     for (const epic of epicFiles) {
         const hotfix = hotfixRows.find((h) => h.filename === epic.filename);
         const dssStorageId = epic.storageIds.DSS;
@@ -55,13 +53,9 @@ app.get("/fortnite/api/cloudstorage/system", async (c) => {
             });
         }
 
-        // Always refresh cache-related hashes
         epic.doNotCache = true;
-        epic.hash256 = (await sha256(crypto.randomUUID())) ?? "";
-        epic.hash = (await sha1(crypto.randomUUID())) ?? "";
     }
 
-    // Perform updates separately
     if (updatesDssStorageId.length > 0 || updatesUniqueFilename.length > 0) {
         console.warn(
             `Updating hotfixes — DSS: ${updatesDssStorageId.length}, uniqueFilename: ${updatesUniqueFilename.length}`
@@ -69,7 +63,6 @@ app.get("/fortnite/api/cloudstorage/system", async (c) => {
 
         c.executionCtx.waitUntil(
             Promise.allSettled([
-                // 🔹 DSS updates
                 ...updatesDssStorageId.map((u) =>
                     db(c)
                         .update(HOTFIXES)
@@ -77,7 +70,6 @@ app.get("/fortnite/api/cloudstorage/system", async (c) => {
                         .where(eq(HOTFIXES.filename, u.filename))
                 ),
 
-                // 🔹 uniqueFilename updates
                 ...updatesUniqueFilename.map((u) =>
                     db(c)
                         .update(HOTFIXES)

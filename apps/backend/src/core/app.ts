@@ -17,6 +17,20 @@ const app = new Hono<{ Bindings: CloudflareBindings, Variables: { account: Accou
         c.set("account", account);
         await next();
     })
+    .use(async (c, next) => {
+        const colo = String(c.req.raw.cf?.colo) ?? "global"
+        const durableObjectId = c.env.DrizzleCacheDurableObject.idFromName(colo);
+        const durableObject = c.env.DrizzleCacheDurableObject.get(durableObjectId);
+
+        const override = await durableObject.getOverride(c.req.path, c.req.method);
+        if (override) {
+            c.res.headers.set("Content-Type", override.contentType);
+            c.res.headers.set("Cache-Control", "no-cache");
+            return c.body(override.response);
+        } else {
+            await next();
+        }
+    })
 
 app.notFound((c) => {
     return c.json({ error: "Not Found", route: c.req.path }, 404);

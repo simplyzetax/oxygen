@@ -8,6 +8,12 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 //@ts-expect-error - no types for migrations
 import migrations from '../databases/do/migrations/migrations.js';
 
+type ContentType = "application/json" | "application/octet-stream" | "text/html" | "text/plain" | "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml" | "image/avif" | "image/heic" | "image/heif" | "image/heif-sequence" | "image/heic-sequence" | "image/heif-sequence" | "image/heic-sequence";
+type Override = {
+    contentType: ContentType;
+    response: string | ArrayBuffer;
+};
+
 export class DrizzleCacheDurableObject extends DurableObject {
     private db = drizzle(this.ctx.storage);
     private memoryCache = new Map<string, Omit<DrizzleCache, 'key'>>();
@@ -18,6 +24,30 @@ export class DrizzleCacheDurableObject extends DurableObject {
             console.log("Migrating database");
             await migrate(this.db, migrations);
         });
+    }
+
+    async addOverride(url: string, method: string, response: string | ArrayBuffer | null) {
+        const contentType: ContentType =
+            response === null
+                ? "application/json"
+                : response instanceof ArrayBuffer
+                    ? "application/octet-stream"
+                    : typeof response === "string"
+                        ? "text/plain"
+                        : "application/json";
+
+        this.ctx.storage.kv.put<Override>(`override:${url}:${method}`, {
+            contentType,
+            response: response ?? "",
+        });
+    }
+
+    async getOverride(url: string, method: string): Promise<Override | undefined> {
+        return this.ctx.storage.kv.get<Override>(`override:${url}:${method}`);
+    }
+
+    async deleteOverride(url: string, method: string) {
+        this.ctx.storage.kv.delete(`override:${url}:${method}`);
     }
 
     async get(key: string): Promise<any> {

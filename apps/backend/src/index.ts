@@ -4,6 +4,10 @@ export { DrizzleCacheDurableObject } from "./core/dos/DrizzleCacheDurableObject"
 
 import.meta.glob("./services/**/*.{ts,tsx}", { eager: true });
 
+app.on(['PUT', 'DELETE'], '/post', (c) => {
+    return c.json({ message: "Hello, world!" });
+});
+
 app.all("*", async (c) => {
     const proxy = new Proxy(c);
     const result = await proxy.forward();
